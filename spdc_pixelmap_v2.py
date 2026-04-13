@@ -351,7 +351,7 @@ for i,om_s in enumerate(om_s_grid):
 
         T = gamma(ks,om_s,n_samples)
 
-        for phi in enumerate(phi_s_grid):
+        for q,phi in enumerate(phi_s_grid):
             kst = np.array([ks[0]*np.cos(phi),ks[0]*np.sin(phi),ks[2]])
 
 
