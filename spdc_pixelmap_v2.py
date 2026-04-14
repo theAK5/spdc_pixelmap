@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 
 
-
 #Units
 mm = 1e-3
 nm = 1e-9
@@ -154,18 +153,18 @@ def n_e_eff_thz(nu,theta):
 #Imaging
 f2 = 125.0      # mm
 f3 = 400.0      # mm
-slit_width = 1 # mm
+slit_width = 500 # mm
 
 # Camera
-pixel_size = 1  # mm
-camera_x = 1000
-camera_y = 1000
+pixel_size = 0.065 # mm
+camera_x = 1920
+camera_y = 1080
 image = np.zeros((camera_y, camera_x))
 
 # Grating
 lines_per_mm = 1908
-d = 1 / lines_per_mm
-order = 1
+d = 1/ (1000*lines_per_mm)
+order = -1
 
 def matrix_free_space(L):
     return np.array([[1, L], [0, 1]])
@@ -175,19 +174,19 @@ def matrix_lens(f):
 
 
 d1 = 125 #Before Lens f2
-d2 = 100 #After Lens f2 to slit
-d3 = 100 #After Slit to Lens f3
+d2 = 125 #After Lens f2 to slit
+d3 = 400 #After Slit to Lens f3
 d4 = 400 #After Lens f3 to Grating
-d5 = 400 #After Grating to Camera
+d5 = 100 #After Grating to Camera
 
 M_to_slit = matrix_free_space(d1)@ matrix_lens(f2)@ matrix_free_space(d2)
 M_slit_to_grating = matrix_free_space(d3)@ matrix_lens(f3)@ matrix_free_space(d4)
 M_grating_to_camera = matrix_free_space(d5)
 
-def pixelmap(ks):
+def pixelmap(ks,om_s):
     
     k_mag = np.sqrt(ks[0]**2 + ks[1]**2 + ks[2]**2)
-    lambda_s = 1/(2*pi*k_mag)
+    lambda_s = 2*pi*c/om_s
     
     # Initial ray angles from k_s components
     theta_x = np.arctan2(ks[0],ks[2])  # angle in x-z plane
@@ -206,9 +205,17 @@ def pixelmap(ks):
     ray_y = M_slit_to_grating @ ray_y
     
     # Apply grating in x
-    theta_x_after_grating = np.arcsin(np.sin(ray_x[1]) + order*d* lambda_s)
+
+    before = ray_x
     
-    ray_x = np.array([ray_x[1],theta_x_after_grating])
+    sintheta = np.sin(ray_x[1]) + order*(lambda_s/d)
+    
+    print()
+    print(sintheta)
+    theta_x_after_grating = np.arcsin(sintheta)
+   
+    ray_x = np.array([ray_x[0],theta_x_after_grating])
+
 
 
     # Propagate after grating
@@ -221,6 +228,7 @@ def pixelmap(ks):
     
     if (0 <= i < camera_x and 0 <= j < camera_y):
         return i,j, True
+        print(k_mag)
     else:
         return 0,0, False
 
@@ -228,21 +236,26 @@ def pixelmap(ks):
 
 #Simulation parameters
 
-n_samples = 1000
-
+n_samples = 10
 #Range for signal
 om_s_min = om_p - (2*pi*nu_thz_max)
 om_s_max = om_p - (2*pi*nu_thz_min)
 delta_om_s = (2*np.pi*c) / (2 * 2.2 *L)
 N_omega_s = int((om_s_max - om_s_min)/delta_om_s)+1
 
+N_omega_s = 200
+
+
+
 #Range for signal angle(theta_s)
 theta_max = 3.0 * np.pi/180 
 delta_theta = (lam_p) / (5 * np.pi * w_p)
 N_theta = int(theta_max / delta_theta) + 1
 
+
+
 #Range for signal angle(theta_s)
-N_phi = 30
+N_phi = 100
 
 om_s_grid = np.linspace(om_s_min, om_s_max, N_omega_s)
 cos_theta_grid = np.linspace(np.cos(theta_max),1, N_theta)
@@ -296,7 +309,7 @@ def gamma(ks,om_s,n_s):
     k_iz = k_iz_center + x_kz*(2/L)
 
     #k_perp
-    k_perp = np.sqrt(k_i**2 - k_iz)
+    k_perp = np.sqrt(k_i**2 - k_iz**2)
     sig_phi = 1/(w_p*k_perp)
     phi_i = np.array([np.random.normal(0,sig) for sig in sig_phi])
 
@@ -308,7 +321,7 @@ def gamma(ks,om_s,n_s):
     delta_kz = x_kz*(2/L)
     delta_om = x_omega*(2/T_I)
     delta_kx = k_sx+k_ix
-    delta_ky = k_ix
+    delta_ky = k_iy
 
     #Integrand
 
@@ -317,7 +330,7 @@ def gamma(ks,om_s,n_s):
     sinc_z = np.sinc(delta_kz*L/2)
     sinc_t = np.sinc(delta_om*T_I/2)
 
-    gauss_perp = np.exp(0.5*(delta_kx**2 + delta_ky**2)*w_p**2)
+    gauss_perp = np.exp(-0.5*(delta_kx**2 + delta_ky**2)*w_p**2)
 
     jacobian = k_i*n_ge_thz(om_i/2*pi)/c
 
@@ -336,7 +349,9 @@ def gamma(ks,om_s,n_s):
 
     return (weights.mean())
 
-
+sim_len = len(om_s_grid)*len(cos_theta_grid)*len(phi_s_grid)
+om_len = len(om_s_grid)
+print("Total Iterations = ",sim_len)
 
 #Signal pixel Loop
 for i,om_s in enumerate(om_s_grid):
@@ -344,27 +359,27 @@ for i,om_s in enumerate(om_s_grid):
         theta = np.arccos(cos_theta)
         
         k = n_o_ir(2*pi*c/om_s)*om_s/c
-
         ks = np.array([k*np.sin(theta),0,k*np.cos(theta)])
-
-
-
-        T = gamma(ks,om_s,n_samples)
+        Tk = gamma(ks,om_s,n_samples)
 
         for q,phi in enumerate(phi_s_grid):
             kst = np.array([ks[0]*np.cos(phi),ks[0]*np.sin(phi),ks[2]])
 
 
-            x,y,p = pixelmap(kst)
-            
+            x,y,p = pixelmap(kst,om_s)
+                        
             if(p):
-                image[x,y]+= T*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
+                image[int(y),int(x)]+= Tk*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
+                print(x,y)
+                
+            
+    print(i+1, " omegas done out of ", om_len)
         
 
 plt.figure(figsize=(10,6))
-plt.imshow(image, cmap = 'hot')
+plt.imshow(image, cmap = 'magma')
 plt.title("SPDC Spectrum Simulation (Matrix Optics + Grating + Camera)")
-plt.xlabel("Pixel X (Wavelength)")
-plt.ylabel("Pixel Y (Angle)")
+plt.xlabel("Pixel X ")
+plt.ylabel("Pixel Y ")
 plt.colorbar(label="counts")
 plt.show()

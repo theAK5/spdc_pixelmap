@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 #Imaging
 f2 = 125.0      # mm
 f3 = 400.0      # mm
-slit_width = 1 # mm
+slit_width = 50 # mm
 
 # Camera
 pixel_size = 1  # mm
