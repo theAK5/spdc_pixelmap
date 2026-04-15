@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
+from joblib import Parallel, delayed
 
 
 #Units
@@ -184,40 +185,40 @@ M_to_slit = matrix_free_space(d1)@ matrix_lens(f2)@ matrix_free_space(d2)
 M_slit_to_grating = matrix_free_space(d3)@ matrix_lens(f3)@ matrix_free_space(d4)
 M_grating_to_camera = matrix_free_space(d5)
 
-def pixelmap(ks,om_s):
+def pixelmap_vec(kst_x,kst_y,ks_z,om_s):
     
-    k_mag = np.sqrt(ks[0]**2 + ks[1]**2 + ks[2]**2)
     lambda_s = 2*pi*c/om_s
     
     # Initial ray angles from k_s components
-    theta_x = np.arctan2(ks[0],ks[2])  # angle in x-z plane
-    theta_y = np.arctan2(ks[1],ks[2])  # angle in y-z plane
+    theta_x = np.arctan2(kst_x,ks_z)  # angle in x-z plane
+    theta_y = np.arctan2(kst_y,ks_z)  # angle in y-z plane
 
-    ray_x = np.array([0, theta_x])
-    ray_y = np.array([0, theta_y])
+    ray_x = np.vstack((np.zeros(np.shape(theta_x)),theta_x))
+    ray_y = np.vstack((np.zeros(np.shape(theta_y)),theta_y))
+
+    point = np.ones(len(theta_x),dtype = bool)
     
     ray_x = M_to_slit @ ray_x
     ray_y = M_to_slit @ ray_y
 
-    if(abs(ray_x[0])>(slit_width/2)): 
-        return 0,0,False
+    mask = np.abs(ray_x[0])<=(slit_width/2)
+    ray_x[:,~mask] = 0
+
     
     ray_x = M_slit_to_grating @ ray_x
     ray_y = M_slit_to_grating @ ray_y
     
     # Apply grating in x
 
-    before = ray_x[1]
     
     sintheta = np.sin(ray_x[1]-rot) + order*(lambda_s/d)
-    
     theta_x_after_grating = np.arcsin(sintheta)-rot
 
 
     
     # print(before*(180/pi),theta_x_after_grating*(180/np.pi),lambda_s*1e9)
    
-    ray_x = np.array([ray_x[0],theta_x_after_grating])
+    ray_x = np.vstack((ray_x[0],theta_x_after_grating))
 
 
 
@@ -226,13 +227,17 @@ def pixelmap(ks,om_s):
     ray_y = M_grating_to_camera @ ray_y
 
     # Convert position to pixel index
-    i = camera_x/2 + int(ray_x[0]/ pixel_size)
-    j = camera_y/2 + int(ray_y[0]/ pixel_size)
+    i = (camera_x // 2 + (ray_x[0] / pixel_size).astype(int))
+    j = (camera_y // 2 + (ray_y[0] / pixel_size).astype(int))
     
-    if (0 <= i < camera_x and 0 <= j < camera_y):
-        return i,j, True
-    else:
-        return 0,0, False
+    camera_mask = (i>=0) & (i<camera_x) & (j>=0) & (j<camera_y)
+
+    i_out = np.where(camera_mask,i,0)
+    j_out = np.where(camera_mask,j,0)
+
+    total_mask = camera_mask & mask
+
+    return np.vstack((i_out,j_out,total_mask))
 
 #=====================================================================================================================================================================
 
@@ -246,9 +251,6 @@ om_s_max = om_p - (2*pi*nu_thz_min)
 
 delta_om_s = (2*np.pi*c) / (2 * 2.2 *L)
 N_omega_s = int((om_s_max - om_s_min)/delta_om_s)+1
-
-# N_omega_s = 200
-
 
 
 #Range for signal angle(theta_s)
@@ -283,56 +285,62 @@ sigmas = 1/np.sqrt(2*b_coeffs)
 k_p = n_o_ir(lam_p)*om_p/c
 
 def sample_sinc(N):
+
     components = np.random.choice(3,size=N,p=weights)
-    x_samples = np.array([np.random.normal(0,sigmas[c]) for c in components])
+    sig = sigmas[components]
+    x_samples = np.random.normal(0,sig)
 
     return(x_samples)
 
 def sinc_pdf(x):
-    pdf = sum(w*norm.pdf(x,loc=0,scale=sig) for w,sig in zip(weights,sigmas))
+    w = weights[:,None]
+    sig = sigmas[:,None]
     
-    return pdf
+
+    pdf = w*norm.pdf(x[None,:],0,sig)
+
+    return pdf.sum(axis=0)
 
 #Monte Carlo Loop
-def gamma(ks,om_s,n_s):
-    k_sx = ks[0]
-    k_sy = ks[1]
-    k_sz = ks[2]
+def gamma(ks_x,ks_z,om_s,n_s):
 
     #Sampling peaks
     om_i_center = om_p - om_s
-    k_iz_center = k_p - k_sz + (2*pi/pp)
+    k_iz_center = k_p - ks_z + (2*pi/pp)
 
     #sampling omega
     x_omega = sample_sinc(n_s)
-    om_i = om_i_center + x_omega*(2/T_I)
+    om_i = om_i_center + x_omega[None,:]*(2/T_I)
     k_i = n_o_thz(om_i/2*pi)*om_i/c
 
     #sampling k_iz
     x_kz = sample_sinc(n_s)
-    k_iz = k_iz_center + x_kz*(2/L)
+    k_iz = k_iz_center[:,None] + x_kz[None,:]*(2/L)
+    print(np.shape(k_iz))
 
     #k_perp
     k_perp = np.sqrt(k_i**2 - k_iz**2)
     sig_phi = 1/(w_p*k_perp)
-    phi_i = np.array([np.random.normal(0,sig) for sig in sig_phi])
+    phi_i = np.random.normal(0,sig_phi)
 
     k_ix = k_perp*np.cos(phi_i)
     k_iy = k_perp*np.sin(phi_i)
 
     #phase mismatches
     
-    delta_kz = x_kz*(2/L)
-    delta_om = x_omega*(2/T_I)
-    delta_kx = k_sx+k_ix
+    delta_kz = x_kz[None,:]*(2/L)
+    delta_om = x_omega[None,:]*(2/T_I)
+    delta_kx = ks_x[:,None]+k_ix
     delta_ky = k_iy
 
     #Integrand
 
     prefactor = chi_eff*om_i*om_s/((n_o_ir(2*pi*c/om_s)**2)*(n_o_thz(om_i/2*pi)**2))
 
-    sinc_z = np.sinc(delta_kz*L/2)
-    sinc_t = np.sinc(delta_om*T_I/2)
+    sinc_z = np.sinc(delta_kz*L/2)**2
+
+    sinc_t = np.sinc(delta_om*T_I/2)**2
+    
 
     gauss_perp = np.exp(-0.5*(delta_kx**2 + delta_ky**2)*w_p**2)
 
@@ -340,45 +348,71 @@ def gamma(ks,om_s,n_s):
 
     f = prefactor*sinc_z*sinc_t*gauss_perp*jacobian
 
-
     #PDFs for Monte Carlo
 
-    q_om = sinc_pdf(x_omega)*(T_I/2)
-    q_kz = sinc_pdf(x_kz)*(L/2)
-    q_phi = np.array([norm.pdf(phi,0,sig) for phi,sig in zip(phi_i,sig_phi)])
+    q_om = sinc_pdf(x_omega)[None,:]*(T_I/2)
+    q_kz = sinc_pdf(x_kz)[None,:]*(L/2)
+    q_phi = norm.pdf(phi_i,0,sig_phi)
+
 
     q = q_om*q_kz*q_phi
 
-    weights = f/q
 
-    return (weights.mean())
+    w = f/q
+
+    return (w.mean(axis = -1))
 
 sim_len = len(om_s_grid)*len(cos_theta_grid)*len(phi_s_grid)
 om_len = len(om_s_grid)
 print("Total Iterations = ",sim_len)
 
 #Signal pixel Loop
+
+
+
+
 for i,om_s in enumerate(om_s_grid):
-    for j,cos_theta in enumerate(cos_theta_grid):
-        theta = np.arccos(cos_theta)
+    theta = np.arccos(cos_theta_grid)
+    
+    k = n_o_ir(2*pi*c/om_s)*om_s/c
+    
+    ks_x = k*np.sin(theta)
+    ks_z = k*np.cos(theta)
+
+    
+    
+    Tk = gamma(ks_x,ks_z,om_s,n_samples)
+    #Tk = np.zeros(len(theta))
+    
+    intensity = Tk*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
+
+    xs,ys,vals = [],[],[]
+
+    for phi in phi_s_grid:
         
-        k = n_o_ir(2*pi*c/om_s)*om_s/c
-        ks = np.array([k*np.sin(theta),0,k*np.cos(theta)])
-        Tk = gamma(ks,om_s,n_samples)
+        kst_x = ks_x*np.cos(phi)
+        kst_y = ks_x*np.sin(phi)
 
-        for q,phi in enumerate(phi_s_grid):
-            kst = np.array([ks[0]*np.cos(phi),ks[0]*np.sin(phi),ks[2]])
+        X,Y,P = pixelmap_vec(kst_x,kst_y,ks_z,om_s)
 
+        valid = P.astype(bool)
 
-            x,y,p = pixelmap(kst,om_s)
-                        
-            if(p):
-                image[int(y),int(x)]+= Tk*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
-                # print(x,y,om_s)
-                
-            
-    print(i+1, " omegas done out of ", om_len)
-        
+        if valid.any():
+
+            xs.append(X[valid].astype(int))
+            ys.append(Y[valid].astype(int))
+            vals.append(intensity[valid])
+    
+    if(xs):
+        x = np.concatenate(xs)
+        y = np.concatenate(ys)
+        v = np.concatenate(vals)
+
+    
+        np.add.at(image,(y,x),v)
+
+    
+    
 
 plt.figure(figsize=(10,6))
 plt.imshow(image, cmap = 'magma')
