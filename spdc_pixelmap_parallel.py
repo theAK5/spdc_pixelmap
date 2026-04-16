@@ -139,8 +139,8 @@ def n_go_ir(lam_m):
     b3 = -4.641e-9
     b4 = -2.188e-6
     f = (T-24.5)*(T+570.82)
-    n_p = (1e6*(lam**3)/(2*pi*c*n_e_ir(lam)))*((a3+b3*f)/(((lam**2)-(a3+b3*f)**2)**2) + (a4+b4*f)/(((lam**2)-(a5**2))**2) + a6)
-    ng = n_e_ir(lam) + (2*pi*c/lam)*n_p
+    n_p = (1e6*(lam**3)/(2*pi*c*n_o_ir(lam_m)))*((a3+b3*f)/(((lam**2)-(a3+b3*f)**2)**2) + (a4+b4*f)/(((lam**2)-(a5**2))**2) + a6)
+    ng = n_o_ir(lam_m) + (2*pi*c/lam)*n_p
     return(ng)
 
 
@@ -316,7 +316,6 @@ def gamma(ks_x,ks_z,om_s,n_s):
     #sampling k_iz
     x_kz = sample_sinc(n_s)
     k_iz = k_iz_center[:,None] + x_kz[None,:]*(2/L)
-    print(np.shape(k_iz))
 
     #k_perp
     k_perp = np.sqrt(k_i**2 - k_iz**2)
@@ -334,7 +333,6 @@ def gamma(ks_x,ks_z,om_s,n_s):
     delta_ky = k_iy
 
     #Integrand
-
     prefactor = chi_eff*om_i*om_s/((n_o_ir(2*pi*c/om_s)**2)*(n_o_thz(om_i/2*pi)**2))
 
     sinc_z = np.sinc(delta_kz*L/2)**2
@@ -373,7 +371,6 @@ print("Total Iterations = ",sim_len)
 
 for i,om_s in enumerate(om_s_grid):
     theta = np.arccos(cos_theta_grid)
-    
     k = n_o_ir(2*pi*c/om_s)*om_s/c
     
     ks_x = k*np.sin(theta)
