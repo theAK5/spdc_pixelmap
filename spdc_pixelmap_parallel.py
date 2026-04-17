@@ -252,15 +252,15 @@ n_samples = 10000
 om_s_min = om_p - (2*pi*nu_thz_max)
 om_s_max = om_p - (2*pi*nu_thz_min)
 
-# om_s_min = 2*pi*453.5*thz
-# om_s_max = 2*pi*454*thz
+om_s_min = 2*pi*c/(663*1e-9)
+om_s_max = 2*pi*c/(659.5*1e-9)
 
 delta_om_s = (2*np.pi*c) / (2 * 2.2 *L)
-N_omega_s = int((om_s_max - om_s_min)/delta_om_s)+1
+N_omega_s = int((om_s_max - om_s_min)/delta_om_s)+50
 
 
 #Range for signal angle(theta_s)
-theta_max = 3.0 * np.pi/180 
+theta_max = 1 * np.pi/180 
 delta_theta = (lam_p) / (5 * np.pi * w_p)
 N_theta = int(theta_max / delta_theta) + 50
 
@@ -433,7 +433,7 @@ for i,om_s in enumerate(om_s_grid):
 
 plt.figure(figsize=(10,6))
 
-image_masked = np.where(image>=1e12,image,np.nan)
+image_masked = np.where(image>=1e10,image,np.nan)
 
 plt.imshow(image_masked, cmap='magma', norm=LogNorm())
 plt.title("SPDC Spectrum Simulation (Matrix Optics + Grating + Camera)")

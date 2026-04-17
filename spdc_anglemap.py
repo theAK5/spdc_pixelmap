@@ -170,7 +170,7 @@ N_omega_s = int((om_s_max - om_s_min)/delta_om_s)+1
 
 
 #Range for signal angle(theta_s)
-theta_max = 3.0 * np.pi/180 
+theta_max = 3 * np.pi/180 
 delta_theta = (lam_p) / (5 * np.pi * w_p)
 N_theta = int(theta_max / delta_theta) + 50
 
