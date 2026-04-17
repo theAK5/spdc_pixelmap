@@ -380,7 +380,6 @@ print("Total Iterations = ",sim_len)
 #Signal pixel Loop
 
 
-
 ws = []
 ins = []
 
