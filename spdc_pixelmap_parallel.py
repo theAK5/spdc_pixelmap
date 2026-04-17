@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 from joblib import Parallel, delayed
-
+from matplotlib.colors import LogNorm
 
 #Units
 mm = 1e-3
@@ -176,8 +176,8 @@ def matrix_lens(f):
 
 
 d1 = 125 #Before Lens f2
-d2 = 200 #After Lens f2 to slit
-d3 = 200 #After Slit to Lens f3
+d2 = 125 #After Lens f2 to slit
+d3 = 400 #After Slit to Lens f3
 d4 = 400 #After Lens f3 to Grating
 d5 = 3000 #After Grating to Camera
 
@@ -203,8 +203,8 @@ def pixelmap_vec(kst_x,kst_y,ks_z,om_s):
     ray_y = M_to_slit @ ray_y
 
 
-    # mask = np.abs(ray_x[0])<=(slit_width/2)
-    # ray_x[:,~mask] = 0
+    mask = np.abs(ray_x[0])<=(slit_width/2)
+    ray_x[:,~mask] = 0
 
     
     ray_x = M_slit_to_grating @ ray_x
@@ -214,10 +214,10 @@ def pixelmap_vec(kst_x,kst_y,ks_z,om_s):
     # Apply grating in x
 
     
-    # sintheta = np.sin(ray_x[1]-rot) + order*(lambda_s/d)
-    # theta_x_after_grating = np.arcsin(sintheta)-rot
+    sintheta = np.sin(ray_x[1]-rot) + order*(lambda_s/d)
+    theta_x_after_grating = np.arcsin(sintheta)-rot
 
-    # ray_x = np.vstack((ray_x[0],theta_x_after_grating))
+    ray_x = np.vstack((ray_x[0],theta_x_after_grating))
 
 
 
@@ -319,6 +319,12 @@ def gamma(ks_x,ks_z,om_s,n_s):
     k_iz = k_iz_center[:,None] + x_kz[None,:]*(2/L)
 
     #k_perp
+
+    kp_sq = k_i**2 - k_iz**2
+    
+    if(kp_sq<0).any():
+        return np.zeros(len(ks_x))
+
     k_perp = np.sqrt(k_i**2 - k_iz**2)
     sig_phi = 1/(w_p*k_perp)
     phi_i = np.random.normal(0,sig_phi)
@@ -381,10 +387,11 @@ for i,om_s in enumerate(om_s_grid):
 
     
     
-    #Tk = gamma(ks_x,ks_z,om_s,n_samples)
-    Tk = np.ones(len(theta))
+    Tk = gamma(ks_x,ks_z,om_s,n_samples)
+    #Tk = np.ones(len(theta))
     
     intensity = Tk*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
+    print(intensity)
 
     xs,ys,vals = [],[],[]
 
@@ -395,7 +402,6 @@ for i,om_s in enumerate(om_s_grid):
 
         X,Y,P = pixelmap_vec(kst_x,kst_y,ks_z,om_s)
 
-        print(Y)
         valid = P.astype(bool)
 
         if valid.any():
@@ -416,7 +422,10 @@ for i,om_s in enumerate(om_s_grid):
     
 
 plt.figure(figsize=(10,6))
-plt.imshow(image, cmap = 'magma')
+
+image_masked = np.where(image>=1e20,image,np.nan)
+
+plt.imshow(image_masked, cmap='magma', norm=LogNorm())
 plt.title("SPDC Spectrum Simulation (Matrix Optics + Grating + Camera)")
 plt.xlabel("Pixel X ")
 plt.ylabel("Pixel Y ")
