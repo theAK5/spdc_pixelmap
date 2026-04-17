@@ -401,7 +401,7 @@ for i,om_s in enumerate(om_s_grid):
     intensity = Tk*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
 
     ins.append(np.max(intensity))
-    ws.append(om_s/(2*pi))
+    ws.append((2*pi*c)/(om_s)*1e9)
 
     xs,ys,vals = [],[],[]
 
