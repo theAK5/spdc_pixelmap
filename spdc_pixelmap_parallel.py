@@ -63,8 +63,8 @@ def n_ge_thz(nu):
     A = 5
     B = 2.5e-2
     C = 3e-3
-    n_p = 2*B*nu + 4*C*nu*nu*nu*(1e-12/2*pi) #differenciating wrt omega (chain rule)
-    ng = n_e_thz(nu) + 2*pi*nu*n_p
+    n_p = 2*B*nu + 4*C*nu*nu*nu*(1e-12/(2*pi)) #differenciating wrt omega (chain rule)
+    ng = n_e_thz(nu) + 2*pi*nu*n_p*1e12
     return(ng)
 
 def n_go_thz(nu):
@@ -72,8 +72,8 @@ def n_go_thz(nu):
     A = 6.5
     B = 8.2e-2
     C = 6e-3
-    n_p = (2*B*nu + 4*C*nu*nu*nu)*(1e-12/2*pi)
-    ng = n_e_thz(nu) + 2*pi*nu*n_p
+    n_p = (2*B*nu + 4*C*nu*nu*nu)*(1e-12/(2*pi))
+    ng = n_o_thz(nu) + 2*pi*nu*n_p*1e12
     return(ng)
 
 def n_e_ir(lam_m):
@@ -105,8 +105,8 @@ def n_ge_ir(lam_m):
     b3 = 6.113e-8
     b4 = 1.5616e-4
     f = (T-24.5)*(T+570.82)
-    n_p = (1e6*(lam**3)/(2*pi*c*n_e_ir(lam)))*((a3+b3*f)/(((lam**2)-(a3+b3*f)**2)**2) + (a4+b4*f)/(((lam**2)-(a5**2))**2) + a6)
-    ng = n_e_ir(lam) + (2*pi*c/lam)*n_p
+    n_p = (1e6*(lam**3)/(2*pi*c*n_e_ir(lam_m)))*((a3+b3*f)/(((lam**2)-(a3+b3*f)**2)**2) + (a4+b4*f)/(((lam**2)-(a5**2))**2) + a6)
+    ng = n_e_ir(lam_m) + (2*pi*c/lam_m)*n_p
     return(ng)
 
 
@@ -140,7 +140,7 @@ def n_go_ir(lam_m):
     b4 = -2.188e-6
     f = (T-24.5)*(T+570.82)
     n_p = (1e6*(lam**3)/(2*pi*c*n_o_ir(lam_m)))*((a3+b3*f)/(((lam**2)-(a3+b3*f)**2)**2) + (a4+b4*f)/(((lam**2)-(a5**2))**2) + a6)
-    ng = n_o_ir(lam_m) + (2*pi*c/lam)*n_p
+    ng = n_o_ir(lam_m) + (2*pi*c/lam_m)*n_p
     return(ng)
 
 
@@ -174,12 +174,14 @@ def matrix_free_space(L):
 def matrix_lens(f):
     return np.array([[1, 0], [-1/f, 1]])
 
+ts =[]
+ws =[]
 
 d1 = 125 #Before Lens f2
 d2 = 125 #After Lens f2 to slit
 d3 = 400 #After Slit to Lens f3
-d4 = 400 #After Lens f3 to Grating
-d5 = 3000 #After Grating to Camera
+d4 = 300 #After Lens f3 to Grating
+d5 = 5000 #After Grating to Camera
 
 M_to_slit = matrix_free_space(d2)@ matrix_lens(f2)@ matrix_free_space(d1)
 M_slit_to_grating = matrix_free_space(d4)@ matrix_lens(f3)@ matrix_free_space(d3)
@@ -245,10 +247,13 @@ def pixelmap_vec(kst_x,kst_y,ks_z,om_s):
 #Simulation parameters
 
 n_samples = 10000
+
 #Range for signal
 om_s_min = om_p - (2*pi*nu_thz_max)
 om_s_max = om_p - (2*pi*nu_thz_min)
 
+# om_s_min = 2*pi*453.5*thz
+# om_s_max = 2*pi*454*thz
 
 delta_om_s = (2*np.pi*c) / (2 * 2.2 *L)
 N_omega_s = int((om_s_max - om_s_min)/delta_om_s)+1
@@ -257,7 +262,7 @@ N_omega_s = int((om_s_max - om_s_min)/delta_om_s)+1
 #Range for signal angle(theta_s)
 theta_max = 3.0 * np.pi/180 
 delta_theta = (lam_p) / (5 * np.pi * w_p)
-N_theta = int(theta_max / delta_theta) + 1
+N_theta = int(theta_max / delta_theta) + 50
 
 
 
@@ -312,7 +317,7 @@ def gamma(ks_x,ks_z,om_s,n_s):
     #sampling omega
     x_omega = sample_sinc(n_s)
     om_i = om_i_center + x_omega[None,:]*(2/T_I)
-    k_i = n_o_thz(om_i/2*pi)*om_i/c
+    k_i = n_o_thz(om_i/(2*pi))*(om_i/c)
 
     #sampling k_iz
     x_kz = sample_sinc(n_s)
@@ -341,16 +346,16 @@ def gamma(ks_x,ks_z,om_s,n_s):
 
     #Integrand
 
-    prefactor = chi_eff*om_i*om_s/((n_o_ir(2*pi*c/om_s)**2)*(n_o_thz(om_i/2*pi)**2))
+    prefactor = chi_eff*om_i*om_s/((n_o_ir(2*pi*c/om_s)**2)*(n_o_thz(om_i/(2*pi))**2))
 
     sinc_z = np.sinc(delta_kz*L/2)**2
 
     sinc_t = np.sinc(delta_om*T_I/2)**2
     
 
-    gauss_perp = np.exp(-0.5*(delta_kx**2 + delta_ky**2)*w_p**2)
+    gauss_perp = np.exp(-0.5*((delta_kx**2) + (delta_ky**2))*(w_p**2))
 
-    jacobian = k_i*n_ge_thz(om_i/2*pi)/c
+    jacobian = k_i*n_go_thz(om_i/(2*pi))/c
 
     f = prefactor*sinc_z*sinc_t*gauss_perp*jacobian
 
@@ -376,11 +381,14 @@ print("Total Iterations = ",sim_len)
 
 
 
+ws = []
+ins = []
 
 for i,om_s in enumerate(om_s_grid):
     theta = np.arccos(cos_theta_grid)
     
-    k = n_o_ir(2*pi*c/om_s)*om_s/c
+    print((2*pi*c/om_s)*1e9,"nm")
+    k = n_o_ir(2*pi*c/om_s)*(om_s/c)
     
     ks_x = k*np.sin(theta)
     ks_z = k*np.cos(theta)
@@ -391,7 +399,9 @@ for i,om_s in enumerate(om_s_grid):
     #Tk = np.ones(len(theta))
     
     intensity = Tk*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
-    print(intensity)
+
+    ins.append(np.max(intensity))
+    ws.append(om_s/(2*pi))
 
     xs,ys,vals = [],[],[]
 
@@ -423,11 +433,14 @@ for i,om_s in enumerate(om_s_grid):
 
 plt.figure(figsize=(10,6))
 
-image_masked = np.where(image>=1e20,image,np.nan)
+image_masked = np.where(image>=1e12,image,np.nan)
 
 plt.imshow(image_masked, cmap='magma', norm=LogNorm())
 plt.title("SPDC Spectrum Simulation (Matrix Optics + Grating + Camera)")
 plt.xlabel("Pixel X ")
 plt.ylabel("Pixel Y ")
 plt.colorbar(label="counts")
+plt.show()
+
+plt.plot(ws,ins)
 plt.show()
