@@ -176,13 +176,13 @@ def matrix_lens(f):
 
 
 d1 = 125 #Before Lens f2
-d2 = 125 #After Lens f2 to slit
+d2 = 200 #After Lens f2 to slit
 d3 = 200 #After Slit to Lens f3
 d4 = 400 #After Lens f3 to Grating
 d5 = 3000 #After Grating to Camera
 
-M_to_slit = matrix_free_space(d1)@ matrix_lens(f2)@ matrix_free_space(d2)
-M_slit_to_grating = matrix_free_space(d3)@ matrix_lens(f3)@ matrix_free_space(d4)
+M_to_slit = matrix_free_space(d2)@ matrix_lens(f2)@ matrix_free_space(d1)
+M_slit_to_grating = matrix_free_space(d4)@ matrix_lens(f3)@ matrix_free_space(d3)
 M_grating_to_camera = matrix_free_space(d5)
 
 def pixelmap_vec(kst_x,kst_y,ks_z,om_s):
@@ -196,35 +196,35 @@ def pixelmap_vec(kst_x,kst_y,ks_z,om_s):
     ray_x = np.vstack((np.zeros(np.shape(theta_x)),theta_x))
     ray_y = np.vstack((np.zeros(np.shape(theta_y)),theta_y))
 
-    point = np.ones(len(theta_x),dtype = bool)
+
+    mask = np.ones(len(theta_x),dtype = bool)
     
     ray_x = M_to_slit @ ray_x
     ray_y = M_to_slit @ ray_y
 
-    mask = np.abs(ray_x[0])<=(slit_width/2)
-    ray_x[:,~mask] = 0
+
+    # mask = np.abs(ray_x[0])<=(slit_width/2)
+    # ray_x[:,~mask] = 0
 
     
     ray_x = M_slit_to_grating @ ray_x
     ray_y = M_slit_to_grating @ ray_y
     
+
     # Apply grating in x
 
     
-    sintheta = np.sin(ray_x[1]-rot) + order*(lambda_s/d)
-    theta_x_after_grating = np.arcsin(sintheta)-rot
+    # sintheta = np.sin(ray_x[1]-rot) + order*(lambda_s/d)
+    # theta_x_after_grating = np.arcsin(sintheta)-rot
 
-
-    
-    # print(before*(180/pi),theta_x_after_grating*(180/np.pi),lambda_s*1e9)
-   
-    ray_x = np.vstack((ray_x[0],theta_x_after_grating))
+    # ray_x = np.vstack((ray_x[0],theta_x_after_grating))
 
 
 
     # Propagate after grating
     ray_x = M_grating_to_camera @ ray_x
     ray_y = M_grating_to_camera @ ray_y
+    
 
     # Convert position to pixel index
     i = (camera_x // 2 + (ray_x[0] / pixel_size).astype(int))
@@ -235,9 +235,10 @@ def pixelmap_vec(kst_x,kst_y,ks_z,om_s):
     i_out = np.where(camera_mask,i,0)
     j_out = np.where(camera_mask,j,0)
 
+
     total_mask = camera_mask & mask
 
-    return np.vstack((i_out,j_out,total_mask))
+    return i_out,j_out,total_mask
 
 #=====================================================================================================================================================================
 
@@ -333,6 +334,7 @@ def gamma(ks_x,ks_z,om_s,n_s):
     delta_ky = k_iy
 
     #Integrand
+
     prefactor = chi_eff*om_i*om_s/((n_o_ir(2*pi*c/om_s)**2)*(n_o_thz(om_i/2*pi)**2))
 
     sinc_z = np.sinc(delta_kz*L/2)**2
@@ -371,6 +373,7 @@ print("Total Iterations = ",sim_len)
 
 for i,om_s in enumerate(om_s_grid):
     theta = np.arccos(cos_theta_grid)
+    
     k = n_o_ir(2*pi*c/om_s)*om_s/c
     
     ks_x = k*np.sin(theta)
@@ -378,8 +381,8 @@ for i,om_s in enumerate(om_s_grid):
 
     
     
-    Tk = gamma(ks_x,ks_z,om_s,n_samples)
-    #Tk = np.zeros(len(theta))
+    #Tk = gamma(ks_x,ks_z,om_s,n_samples)
+    Tk = np.ones(len(theta))
     
     intensity = Tk*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
 
@@ -392,6 +395,7 @@ for i,om_s in enumerate(om_s_grid):
 
         X,Y,P = pixelmap_vec(kst_x,kst_y,ks_z,om_s)
 
+        print(Y)
         valid = P.astype(bool)
 
         if valid.any():
