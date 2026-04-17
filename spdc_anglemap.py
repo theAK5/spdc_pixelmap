@@ -156,21 +156,22 @@ def n_e_eff_thz(nu,theta):
 
 #Simulation parameters
 
-n_samples = 10000
+n_samples = 100000
 
 #Range for signal
 # om_s_min = om_p - (2*pi*nu_thz_max)
 # om_s_max = om_p - (2*pi*nu_thz_min)
 
-om_s_min = 2*pi*453.5*thz
-om_s_max = 2*pi*454*thz
+
+om_s_min = 2*pi*c/(661*1e-9)
+om_s_max = 2*pi*c/(660*1e-9)
 
 delta_om_s = (2*np.pi*c) / (2 * 2.2 *L)
 N_omega_s = int((om_s_max - om_s_min)/delta_om_s)+1
 
 
 #Range for signal angle(theta_s)
-theta_max = 3 * np.pi/180 
+theta_max = 0.5 * np.pi/180 
 delta_theta = (lam_p) / (5 * np.pi * w_p)
 N_theta = int(theta_max / delta_theta) + 50
 
@@ -319,7 +320,7 @@ plt.figure(figsize=(10,6))
 
 plt.pcolormesh(x,y,image.T,shading='auto',cmap ='viridis')
 plt.title("SPDC Spectrum Simulation (Matrix Optics + Grating + Camera)")
-plt.xlabel("Pixel X ")
-plt.ylabel("Pixel Y ")
+plt.xlabel("Theta (degrees)")
+plt.ylabel("Lambda (nm) ")
 plt.colorbar(label="counts")
 plt.show()
