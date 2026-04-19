@@ -180,8 +180,8 @@ ws =[]
 d1 = 125 #Before Lens f2
 d2 = 125 #After Lens f2 to slit
 d3 = 400 #After Slit to Lens f3
-d4 = 300 #After Lens f3 to Grating
-d5 = 5000 #After Grating to Camera
+d4 = 400 #After Lens f3 to Grating
+d5 = 2500 #After Grating to Camera
 
 M_to_slit = matrix_free_space(d2)@ matrix_lens(f2)@ matrix_free_space(d1)
 M_slit_to_grating = matrix_free_space(d4)@ matrix_lens(f3)@ matrix_free_space(d3)
@@ -252,17 +252,17 @@ n_samples = 10000
 om_s_min = om_p - (2*pi*nu_thz_max)
 om_s_max = om_p - (2*pi*nu_thz_min)
 
-om_s_min = 2*pi*c/(663*1e-9)
-om_s_max = 2*pi*c/(659.5*1e-9)
+# om_s_min = 2*pi*c/(663*1e-9)
+# om_s_max = 2*pi*c/(659.5*1e-9)
 
 delta_om_s = (2*np.pi*c) / (2 * 2.2 *L)
-N_omega_s = int((om_s_max - om_s_min)/delta_om_s)+50
+N_omega_s = int((om_s_max - om_s_min)/delta_om_s)  +  50
 
 
 #Range for signal angle(theta_s)
 theta_max = 2 * np.pi/180 
 delta_theta = (lam_p) / (5 * np.pi * w_p)
-N_theta = int(theta_max / delta_theta) + 100
+N_theta = int(theta_max / delta_theta) + 50
 
 
 
@@ -305,79 +305,82 @@ def sinc_pdf(x):
 
     pdf = w*norm.pdf(x[None,:],0,sig)
 
-    return pdf.sum(axis=0)
+    q = pdf.sum(axis = 0)
+
+    return q
 
 #Monte Carlo Loop
 def gamma(ks_x,ks_z,om_s,n_s):
 
-    #Sampling peaks
-    om_i_center = om_p - om_s
-    k_iz_center = k_p - ks_z + (2*pi/pp)
-
     #sampling omega
-    x_omega = sample_sinc(n_s)
-    om_i = om_i_center + x_omega[None,:]*(2/T_I)
-    k_i = n_o_thz(om_i/(2*pi))*(om_i/c)
-
-    #sampling k_iz
-    x_kz = sample_sinc(n_s)
-    k_iz = k_iz_center[:,None] + x_kz[None,:]*(2/L)
-
-    #k_perp
-
-    kp_sq = k_i**2 - k_iz**2
+    om_i_center = om_p - om_s #(scalar)
+    x_omega = sample_sinc(n_s) #(ns)
+    om_i = om_i_center + x_omega[None,:]*(2/T_I) #(1,ns)
     
-    if(kp_sq<0).any():
-        return np.zeros(len(ks_x))
+    n_i = n_o_thz(2*np.pi*c/om_i)  #(1,ns)
+    n_gi = n_go_thz(2*np.pi*c/om_i) #(1,ns)
+    k_i = n_i*om_i/c #(1,ns)
+    dk_domega = n_gi/c #(1,ns)
 
-    k_perp = np.sqrt(k_i**2 - k_iz**2)
-    sig_phi = 1/(w_p*k_perp)
-    phi_i = np.random.normal(0,sig_phi)
-
-    k_ix = k_perp*np.cos(phi_i)
-    k_iy = k_perp*np.sin(phi_i)
-
-    #phase mismatches
     
-    delta_kz = x_kz[None,:]*(2/L)
-    delta_om = x_omega[None,:]*(2/T_I)
-    delta_kx = ks_x[:,None]+k_ix
-    delta_ky = k_iy
+    #sampling theta
+    cos_theta_i_star = np.clip((k_p - ks_z[:,None] + (2*pi/pp))/k_i, -1,1) #(Ntheta,ns)
 
+    theta_i_star = np.arccos(cos_theta_i_star) #(Ntheta)
+    sin_theta_i_star = np.sin(theta_i_star) #(Ntheta)
+    
+    sigma_theta = 2.0/(L*k_i*np.where(sin_theta_i_star>1e-6,sin_theta_i_star,1e-6)) #(Ntheta)
+
+    eps_theta = np.random.normal(0,1,n_s) #(ns)
+    theta_i = theta_i_star + sigma_theta*eps_theta[None,:] #(Ntheta,ns)
+    theta_i = np.clip(theta_i,0,np.pi)
+    sin_theta_i = np.sin(theta_i)
+    cos_theta_i = np.cos(theta_i) #(Ntheta,ns)
+
+    #sample phi
+
+    k_perp_i = k_i*sin_theta_i #(Ntheta,ns)
+    sigma_phi = 1/(w_p*np.where(k_perp_i>1e-10,k_perp_i,1e-10))
+
+    phi_i_star = np.arccos(np.clip(-ks_x[:,None]/np.where(k_perp_i > 1e-10, k_perp_i, 1e-10), -1, 1))
+
+    eps_phi = np.random.normal(0,1,n_s)
+    phi_i = phi_i_star + sigma_phi*eps_phi[None,:]
+
+    # Reconstruct Cartesian k_i components
+    k_ix = k_perp_i * np.cos(phi_i)
+    k_iy = k_perp_i * np.sin(phi_i)
+    k_iz = k_i * cos_theta_i 
+    
+    #Phase mismatches
+    
+    delta_kz    = k_p - ks_z[:,None] - k_iz + (2*pi/pi)
+    delta_kx    = ks_x[:,None] + k_ix
+    delta_ky    = k_iy  
+    delta_omega = om_p - om_s - om_i
 
     #Integrand
+    n_s = n_o_ir(2*np.pi*c/om_s)
 
-    prefactor = chi_eff*om_i*om_s/((n_o_ir(2*pi*c/om_s)**2)*(n_o_thz(om_i/(2*pi))**2))
-
-    sinc_z = np.sinc(delta_kz*L/2)**2
-
-
-    sinc_t = np.sinc(delta_om*T_I/2)**2
+    prefactor = chi_eff*om_i*om_s/(n_s**2 * n_i**2)
     
+    sinc_z     = np.sinc(delta_kz    * L   / (2*np.pi))**2
+    sinc_t     = np.sinc(delta_omega * T_I / (2*np.pi))**2
+    gauss_perp = np.exp(-0.5*(delta_kx**2 + delta_ky**2)*w_p**2)
+
+    jacobian = k_i**2 * sin_theta_i * dk_domega
+
+    f = prefactor * sinc_z * gauss_perp * sinc_t * jacobian
+
+
+    #PDFs for Monte carlo
+    q_omega = sinc_pdf(x_omega) * (T_I/2)
+    q_theta = norm.pdf(eps_theta[None,:], 0, 1) / sigma_theta
+    q_phi   = norm.pdf(eps_phi[None,:], 0, 1) / sigma_phi
     
-
-    gauss_perp = np.exp(-0.5*((delta_kx**2) + (delta_ky**2))*(w_p**2))
-
-    print((delta_kx**2 + delta_ky**2)*(w_p**2))
-
-
-    jacobian = k_i*n_go_thz(om_i/(2*pi))/c
-
-    f = prefactor*sinc_z*sinc_t*gauss_perp*jacobian
-
-    #PDFs for Monte Carlo
-
-    q_om = sinc_pdf(x_omega)[None,:]*(T_I/2)
-    q_kz = sinc_pdf(x_kz)[None,:]*(L/2)
-    q_phi = norm.pdf(phi_i,0,sig_phi)
-
-
-    q = q_om*q_kz*q_phi
-
-
+    q = q_omega * q_theta * q_phi
     w = f/q
-
-    return (w.mean(axis = -1))
+    return (w.mean(axis = 1))
 
 sim_len = len(om_s_grid)*len(cos_theta_grid)*len(phi_s_grid)
 om_len = len(om_s_grid)
@@ -446,4 +449,4 @@ plt.xlabel("Pixel X ")
 plt.ylabel("Pixel Y ")
 plt.colorbar(label="counts")
 #plt.plot(ws,ins)
-plt.show()
+plt.savefig("pixelmapfull.png")
