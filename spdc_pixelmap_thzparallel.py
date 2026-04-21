@@ -315,21 +315,26 @@ def sinc_pdf(x):
     return q
 
 #Monte Carlo Loop
-def gamma(ks_x,ks_z,om_s,n_s):
+def gamma(ks_x,ks_z,om_s,m,pid,ps,n_s):
 
     #sampling omega
     om_i_center = om_p - om_s #(scalar)
     x_omega = sample_sinc(n_s) #(ns)
     om_i = om_i_center + x_omega[None,:]*(2/T_I) #(1,ns)
-    
-    n_i = n_e_thz(2*np.pi*c/om_i)  #(1,ns)
-    n_gi = n_ge_thz(2*np.pi*c/om_i) #(1,ns)
-    k_i = n_i*om_i/c #(1,ns)
-    dk_domega = n_gi/c #(1,ns)
 
-    
+    if pid=='o':
+        n_i = n_o_thz(2*np.pi*c/om_i)  #(1,ns)
+        n_gi = n_go_thz(2*np.pi*c/om_i) #(1,ns)
+        k_i = n_i*om_i/c #(1,ns)
+        dk_domega = n_gi/c #(1,ns)
+    elif pid=='e':
+        n_i = n_e_thz(2*np.pi*c/om_i)  #(1,ns)
+        n_gi = n_ge_thz(2*np.pi*c/om_i) #(1,ns)
+        k_i = n_i*om_i/c #(1,ns)
+        dk_domega = n_gi/c #(1,ns)
+
     #sampling theta
-    cos_theta_i_star = np.clip((k_p - ks_z[:,None] + (2*pi/pp))/k_i, -1,1) #(Ntheta,ns)
+    cos_theta_i_star = np.clip((k_p - ks_z[:,None] + (2*pi*m/pp))/k_i, -1,1) #(Ntheta,ns)
 
     theta_i_star = np.arccos(cos_theta_i_star) #(Ntheta)
     sin_theta_i_star = np.sin(theta_i_star) #(Ntheta)
@@ -365,7 +370,13 @@ def gamma(ks_x,ks_z,om_s,n_s):
     delta_omega = om_p - om_s - om_i
 
     #Integrand
-    n_s = n_e_ir(2*np.pi*c/om_s)
+    if ps =='o':
+        n_s = n_o_ir(2*np.pi*c/om_s)
+    elif ps=='e':
+        n_s = n_e_ir(2*np.pi*c/om_s)
+
+    if(pid == 'e'):
+        n_i = n_e_eff_thz(om_i/(2*np.pi),theta_i)
 
     prefactor = (chi_eff**2)*om_i*om_s/(n_s**2 * n_i**2)
     
@@ -396,24 +407,42 @@ print("Total Iterations = ",sim_len)
 ws = []
 ins = []
 
-for i,om_s in enumerate(om_s_grid):
+def process_omega(om_s):
+    
     theta = np.arccos(cos_theta_grid)
     
     print((2*pi*c/om_s)*1e9,"nm")
-    k = n_e_ir(2*pi*c/om_s)*(om_s/c)
-    
-    ks_x = k*np.sin(theta)
-    ks_z = k*np.cos(theta)
 
+
+    m = [1] 
+    intensity = np.zeros(len(cos_theta_grid))
     
+    for order in m:
+
+        #Signal ordinary
+        k = n_o_ir(2*pi*c/om_s)*(om_s/c)
+        ks_x = k*np.sin(theta)
+        ks_z = k*np.cos(theta)
+        
+        Tk = gamma(ks_x,ks_z,om_s,order,"o","o",n_samples) #signal ordinary idler ordinary
+        intensity += Z*Tk*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
+        
+        # Tk = gamma(ks_x,ks_z,om_s,order,"o","e",n_samples) #signal ordinary idler eordinary
+        # intensity += Z*Tk*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
+
+        # #Signal Eordinary 
+        # k = n_e_ir(2*pi*c/om_s)*(om_s/c)
+        # ks_x = k*np.sin(theta)
+        # ks_z = k*np.cos(theta)
+        
+        # Tk = gamma(ks_x,ks_z,om_s,order,"e","o",n_samples) #signal eordinary idler ordinary
+        # intensity += Z*Tk*k*k*(n_ge_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
+        
+        # Tk = gamma(ks_x,ks_z,om_s,order,"e","e",n_samples) #signal eordinary idler eordinary
+        # intensity += Z*Tk*k*k*(n_ge_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
     
-    Tk = gamma(ks_x,ks_z,om_s,n_samples)
     #Tk = np.ones(len(theta))
     
-    intensity = Z*Tk*k*k*(n_ge_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
-
-    ins.append(np.max(intensity))
-    ws.append((2*pi*c)/(om_s)*1e9)
 
     xs,ys,vals = [],[],[]
 
@@ -437,10 +466,20 @@ for i,om_s in enumerate(om_s_grid):
         y = np.concatenate(ys)
         v = np.concatenate(vals)
 
-    
-        np.add.at(image,(y,x),v)
+        return(x,y,v)
 
     
+
+results = Parallel(n_jobs=-1, verbose=10, return_as='generator')(
+    delayed(process_omega)(om_s)
+    for om_s in om_s_grid
+)
+
+image = np.zeros((camera_y, camera_x))
+for result in results:
+    if result is not None:
+        x, y, v = result
+        np.add.at(image, (y, x), v)   
     
 
 plt.figure(figsize=(10,6))
@@ -453,6 +492,6 @@ plt.xlabel("Pixel X ")
 plt.ylabel("Pixel Y ")
 plt.colorbar(label="counts")
 #plt.plot(ws,ins)
-# plt.savefig("pixelmapmasked.png")
+#plt.savefig("pixelmapmasked.png")
 
 plt.show()

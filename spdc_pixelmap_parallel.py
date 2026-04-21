@@ -16,6 +16,7 @@ pi4 = np.pow(np.pi,4)
 pi2 = np.pow(np.pi,2)
 pi = np.pi
 
+eps_0 = 8.854e-12
 
 #Experimental Parameters ===================================================================================================================================================
 
@@ -31,8 +32,9 @@ L = 10*mm
 #pump parameters
 lam_p = 659.58*nm 
 om_p = 2*np.pi*c/lam_p
-w_p = 43*um
+w_p = 43*um #Beam waist
 T_I = 75*ps
+P = 200*1e-3 #Pump power (Watts)
 
 #THz range
 nu_thz_max = 3.5*thz
@@ -263,7 +265,6 @@ N_omega_s = int((om_s_max - om_s_min)/delta_om_s)+50
 theta_max = 2 * np.pi/180 
 delta_theta = (lam_p) / (5 * np.pi * w_p)
 N_theta = int(theta_max / delta_theta) + 100
-
 
 
 #Range for signal angle(theta_s)
