@@ -219,10 +219,10 @@ def pixelmap_vec(kst_x,kst_y,ks_z,om_s):
     # Apply grating in x
 
     
-    sintheta = np.sin(ray_x[1]-rot) + order*(lambda_s/d)
-    theta_x_after_grating = np.arcsin(sintheta)-rot
+    # sintheta = np.sin(ray_x[1]-rot) + order*(lambda_s/d)
+    # theta_x_after_grating = np.arcsin(sintheta)-rot
 
-    ray_x = np.vstack((ray_x[0],theta_x_after_grating))
+    # ray_x = np.vstack((ray_x[0],theta_x_after_grating))
 
 
 

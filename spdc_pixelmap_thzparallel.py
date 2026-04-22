@@ -24,7 +24,7 @@ eps0 = 8.854e-12
 #Crystal parameters
 
 chi_eff = 327*1e-12 #pm/V 
-pp = 170*um #Poling period
+pp = 180*um #Poling period
 T = 27 #degree C
 a = np.array([0,0,1]) #Crystal axis
 L = 10*mm
@@ -155,9 +155,9 @@ def n_e_eff_thz(nu,theta):
 #Imaging ===================================================================================================================================================
 
 #Imaging
-f2 = 125.0      # mm
+f2 = 120.0      # mm
 f3 = 400.0      # mm
-slit_width = 1.1 # mm
+slit_width = 1 # mm
 
 # Camera
 pixel_size = 0.065 # mm
@@ -180,11 +180,11 @@ def matrix_lens(f):
 ts =[]
 ws =[]
 
-d1 = 125 #Before Lens f2
-d2 = 125 #After Lens f2 to slit
-d3 = 400 #After Slit to Lens f3
-d4 = 400 #After Lens f3 to Grating
-d5 = 2500 #After Grating to Camera
+d1 = f2 #Before Lens f2
+d2 = f2 #After Lens f2 to slit
+d3 = f3 #After Slit to Lens f3
+d4 = f3 #After Lens f3 to Grating
+d5 = 2000 #After Grating to Camera
 
 M_to_slit = matrix_free_space(d2)@ matrix_lens(f2)@ matrix_free_space(d1)
 M_slit_to_grating = matrix_free_space(d4)@ matrix_lens(f3)@ matrix_free_space(d3)
@@ -223,7 +223,11 @@ def pixelmap_vec(kst_x,kst_y,ks_z,om_s):
     theta_x_after_grating = np.arcsin(sintheta)-rot
 
     ray_x = np.vstack((ray_x[0],theta_x_after_grating))
+    
+    # theta = ray_x[1]-rot + order*(lambda_s/d)
+    # theta_x_after_grating = theta -rot
 
+    # ray_x = np.vstack((ray_x[0],theta_x_after_grating))
 
 
     # Propagate after grating
@@ -255,17 +259,17 @@ n_samples = 10000
 om_s_min = om_p - (2*pi*nu_thz_max)
 om_s_max = om_p - (2*pi*nu_thz_min)
 
-# om_s_min = 2*pi*c/(663*1e-9)
-# om_s_max = 2*pi*c/(659.5*1e-9)
+# om_s_min = 2*pi*c/(665*1e-9)
+# om_s_max = 2*pi*c/(659.72*1e-9)
 
 delta_om_s = (2*np.pi*c) / (2 * 2.2 *L)
-N_omega_s = int((om_s_max - om_s_min)/delta_om_s)  +  50
+N_omega_s = int((om_s_max - om_s_min)/delta_om_s)  +  100
 
 
 #Range for signal angle(theta_s)
-theta_max = 2 * np.pi/180 
+theta_max = 3 * np.pi/180 
 delta_theta = (lam_p) / (5 * np.pi * w_p)
-N_theta = int(theta_max / delta_theta) + 50
+N_theta = int(theta_max / delta_theta) +100
 
 
 Z = (16*pow*(w_p**2)*(L**2)*T_I)/(((2*np.pi)**7)*eps0*n_o_ir(lam_p)*c)
@@ -326,15 +330,17 @@ def gamma(ks_x,ks_z,om_s,m,pid,ps,n_s):
         n_i = n_o_thz(2*np.pi*c/om_i)  #(1,ns)
         n_gi = n_go_thz(2*np.pi*c/om_i) #(1,ns)
         k_i = n_i*om_i/c #(1,ns)
+        k_i_star = n_i*om_i_center/c
         dk_domega = n_gi/c #(1,ns)
     elif pid=='e':
         n_i = n_e_thz(2*np.pi*c/om_i)  #(1,ns)
         n_gi = n_ge_thz(2*np.pi*c/om_i) #(1,ns)
         k_i = n_i*om_i/c #(1,ns)
+        k_i_star = n_i*om_i_center/c
         dk_domega = n_gi/c #(1,ns)
 
     #sampling theta
-    cos_theta_i_star = np.clip((k_p - ks_z[:,None] + (2*pi*m/pp))/k_i, -1,1) #(Ntheta,ns)
+    cos_theta_i_star = np.clip((k_p - ks_z[:,None] + (2*pi*m/pp))/k_i_star, -1,1) #(Ntheta,ns)
 
     theta_i_star = np.arccos(cos_theta_i_star) #(Ntheta)
     sin_theta_i_star = np.sin(theta_i_star) #(Ntheta)
@@ -384,7 +390,7 @@ def gamma(ks_x,ks_z,om_s,m,pid,ps,n_s):
     sinc_t     = np.sinc(delta_omega * T_I / (2*np.pi))**2
     gauss_perp = np.exp(-0.5*(delta_kx**2 + delta_ky**2)*w_p**2)
 
-    jacobian = k_i* dk_domega
+    jacobian = (k_i**2)* dk_domega*sin_theta_i
 
     f = prefactor * sinc_z * gauss_perp * sinc_t * jacobian
 
@@ -394,7 +400,7 @@ def gamma(ks_x,ks_z,om_s,m,pid,ps,n_s):
     q_theta = norm.pdf(eps_theta[None,:], 0, 1) / sigma_theta
     q_phi   = norm.pdf(eps_phi[None,:], 0, 1) / sigma_phi
     
-    q = q_omega * q_theta * q_phi*(L/2)
+    q = q_omega * q_theta * q_phi
     w = f/q
     return (w.mean(axis = 1))
 
@@ -419,29 +425,31 @@ def process_omega(om_s):
     
     for order in m:
 
-        #Signal ordinary
-        k = n_o_ir(2*pi*c/om_s)*(om_s/c)
-        ks_x = k*np.sin(theta)
-        ks_z = k*np.cos(theta)
-        
-        Tk = gamma(ks_x,ks_z,om_s,order,"o","o",n_samples) #signal ordinary idler ordinary
-        intensity += Z*Tk*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
-        
-        # Tk = gamma(ks_x,ks_z,om_s,order,"o","e",n_samples) #signal ordinary idler eordinary
-        # intensity += Z*Tk*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
-
-        # #Signal Eordinary 
-        # k = n_e_ir(2*pi*c/om_s)*(om_s/c)
+        # #Signal ordinary
+        # k = n_o_ir(2*pi*c/om_s)*(om_s/c)
         # ks_x = k*np.sin(theta)
         # ks_z = k*np.cos(theta)
         
-        # Tk = gamma(ks_x,ks_z,om_s,order,"e","o",n_samples) #signal eordinary idler ordinary
+        # Tk = gamma(ks_x,ks_z,om_s,order,"o","o",n_samples) #idler ordinary signal ordinary
+        # intensity += Z*Tk*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
+        
+        # Tk = gamma(ks_x,ks_z,om_s,order,"e","o",n_samples) #idler eordinary signal ordinary
         # intensity += Z*Tk*k*k*(n_ge_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
         
-        # Tk = gamma(ks_x,ks_z,om_s,order,"e","e",n_samples) #signal eordinary idler eordinary
-        # intensity += Z*Tk*k*k*(n_ge_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
+
+        # Signal Eordinary 
+        k = n_e_ir(2*pi*c/om_s)*(om_s/c)
+        ks_x = k*np.sin(theta)
+        ks_z = k*np.cos(theta)
+
+        print("Ir",n_e_ir(2*pi*c/om_s))
+        
+        Tk = gamma(ks_x,ks_z,om_s,order,"o","e",n_samples) #idler ordinary signal eordinary
+        intensity += Z*Tk*k*k*(n_go_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
+        
+        Tk = gamma(ks_x,ks_z,om_s,order,"e","e",n_samples) #idler eordinary signal eordinary
+        intensity += Z*Tk*k*k*(n_ge_ir(2*pi*c/om_s)/c)*d_omega*d_cos_theta*d_phi
     
-    #Tk = np.ones(len(theta))
     
 
     xs,ys,vals = [],[],[]
@@ -484,7 +492,7 @@ for result in results:
 
 plt.figure(figsize=(10,6))
 
-image_masked = np.where(image>=1e4,image,np.nan)
+image_masked = np.where(image>1e6,image,np.nan)
 
 plt.imshow(image_masked, cmap='magma', norm=LogNorm())
 plt.title("SPDC Spectrum Simulation (Matrix Optics + Grating + Camera)")
